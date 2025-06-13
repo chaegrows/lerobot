@@ -20,7 +20,7 @@ from lerobot.configs.policies import PreTrainedConfig
 from lerobot.configs.types import NormalizationMode
 
 
-@PreTrainedConfig.register_subclass("act")
+@PreTrainedConfig.register_subclass("bounded_act")
 @dataclass
 class ACTConfig(PreTrainedConfig):
     """Configuration class for the Action Chunking Transformers policy.
