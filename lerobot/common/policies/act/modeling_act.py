@@ -422,7 +422,16 @@ class ACT(nn.Module):
                 self.vae_encoder_cls_embed.weight, "1 d -> b 1 d", b=batch_size
             )  # (B, 1, D)
             if self.config.robot_state_feature:
-                robot_state_embed = self.vae_encoder_robot_state_input_proj(batch["observation.state"])
+                if "observation.state" not in batch.keys():
+                    # observation.state로 시작하는 키들을 찾아서 순서대로 있고 싶어 순서는 print 해줘
+                    state_keys = [key for key in batch.keys() if key.startswith("observation.state")]
+                    print("state_keys===============================", state_keys)
+                    state_keys.sort()
+                    print("state_keys===============================", state_keys)
+                    state_embed = torch.cat([batch[key] for key in state_keys], dim=-1)
+                    robot_state_embed = self.vae_encoder_robot_state_input_proj(state_embed)
+                else:    
+                    robot_state_embed = self.vae_encoder_robot_state_input_proj(batch["observation.state"])
                 robot_state_embed = robot_state_embed.unsqueeze(1)  # (B, 1, D)
             action_embed = self.vae_encoder_action_input_proj(batch["action"])  # (B, S, D)
 
