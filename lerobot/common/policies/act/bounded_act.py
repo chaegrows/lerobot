@@ -121,18 +121,12 @@ class BoundedACTPolicy(ACTPolicy):
     #         self._action_queue = deque([], maxlen=self.config.n_action_steps)
 
     @torch.no_grad
-    def select_action(self, batch: dict[str, Tensor]) -> Tensor:
+    def select_action(self, batch: dict[str, Tensor], using_last_action: bool = False) -> Tensor:
         """Select a single action given environment observations.
 
         This method wraps `select_actions` in order to return one action at a time for execution in the
         environment. It works by managing the actions in a queue and only calling `select_actions` when the
-        queue is empty. The action is then clipped to the specified limits.
-
-        Args:
-            batch (dict[str, Tensor]): 환경 관측값
-
-        Returns:
-            Tensor: 제한된 범위 내의 액션
+        queue is empty.
         """
         self.eval()
 
@@ -145,10 +139,12 @@ class BoundedACTPolicy(ACTPolicy):
         # we are ensembling over.
         if self.config.temporal_ensemble_coeff is not None:
             actions = self.model(batch)[0]  # (batch_size, chunk_size, action_dim)
+            print("================================================")
+            print(f"actions: {actions}")
+            print("================================================")
             actions = self.unnormalize_outputs({"action": actions})["action"]
             action = self.temporal_ensembler.update(actions)
-            # Clip the action to the specified limits
-            return torch.clamp(action, self.min_limits, self.max_limits)
+            return action
 
         # Action queue logic for n_action_steps > 1. When the action_queue is depleted, populate it by
         # querying the policy.
@@ -157,16 +153,69 @@ class BoundedACTPolicy(ACTPolicy):
 
             # TODO(rcadene): make _forward return output dictionary?
             actions = self.unnormalize_outputs({"action": actions})["action"]
-            
-            # Clip all actions in the queue to the specified limits
-            actions = torch.clamp(actions, self.min_limits, self.max_limits)
 
             # `self.model.forward` returns a (batch_size, n_action_steps, action_dim) tensor, but the queue
             # effectively has shape (n_action_steps, batch_size, *), hence the transpose.
             self._action_queue.extend(actions.transpose(0, 1))
         return self._action_queue.popleft()
-    
 
+    # last 받으려고 짜둔 것
+    # @torch.no_grad
+    # def select_action(self, batch: dict[str, Tensor], using_last_action: bool = False) -> Tensor:
+    #     """Select a single action given environment observations.
+
+    #     This method wraps `select_actions` in order to return one action at a time for execution in the
+    #     environment. It works by managing the actions in a queue and only calling `select_actions` when the
+    #     queue is empty. The action is then clipped to the specified limits.
+
+    #     Args:
+    #         batch (dict[str, Tensor]): 환경 관측값
+
+    #     Returns:
+    #         Tensor: 제한된 범위 내의 액션
+    #     """
+    #     self.eval()
+
+    #     batch = self.normalize_inputs(batch)
+    #     if self.config.image_features:
+    #         batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
+    #         batch["observation.images"] = [batch[key] for key in self.config.image_features]
+
+    #     # If we are doing temporal ensembling, do online updates where we keep track of the number of actions
+    #     # we are ensembling over.
+    #     if self.config.temporal_ensemble_coeff is not None:
+    #         actions = self.model(batch)[0]  # (batch_size, chunk_size, action_dim)
+    #         actions = self.unnormalize_outputs({"action": actions})["action"]
+    #         action = self.temporal_ensembler.update(actions)
+    #         # Clip the action to the specified limits
+    #         return torch.clamp(action, self.min_limits, self.max_limits)
+
+    #     # Action queue logic for n_action_steps > 1. When the action_queue is depleted, populate it by
+    #     # querying the policy.
+    #     if len(self._action_queue) == 0:
+    #         actions = self.model(batch)[0][:, : self.config.n_action_steps]
+
+    #         # TODO(rcadene): make _forward return output dictionary?
+    #         actions = self.unnormalize_outputs({"action": actions})["action"]
+            
+    #         # Clip all actions in the queue to the specified limits
+    #         actions = torch.clamp(actions, self.min_limits, self.max_limits)
+
+    #         # `self.model.forward` returns a (batch_size, n_action_steps, action_dim) tensor, but the queue
+    #         # effectively has shape (n_action_steps, batch_size, *), hence the transpose.
+    #         if using_last_action:
+    #             # self._action_queue.extend(actions.transpose(0, 1))
+    #             print(f"using_last_action: {using_last_action}")
+    #             print(f"actions: {actions}")
+    #             print(f"actions[:, -1]: {actions[:, -1]}")
+    #             # Clear the queue to ensure fresh prediction on next call
+    #             self._action_queue.clear()
+    #             return actions[:, -1]  # Return last timestep: (batch_size, action_dim)
+    #         else:
+    #             self._action_queue.extend(actions.transpose(0, 1))
+
+    #     return self._action_queue.popleft()
+    
 #     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict]:
 #         """Run the batch through the model and compute the loss for training or validation."""
 #         batch = self.normalize_inputs(batch)
